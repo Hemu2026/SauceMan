@@ -40,14 +40,15 @@ body{font-family:'Noto Sans TC',system-ui,sans-serif;background:#f7f5f0;color:#1
 .status-card.approved{background:#f0fdf4;border:1.5px solid #22c55e}
 .divider{display:flex;align-items:center;gap:12px;margin:1.5rem 0;color:#bbb;font-size:13px}
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:#e5e5df}
-.order-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0f0}
+.order-item{display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1px solid #f0f0f0}
 .order-item:last-child{border:none}
-.item-name{flex:1;font-size:14px;font-weight:500}
-.item-qty{display:flex;align-items:center;gap:8px}
-.qty-btn{width:30px;height:30px;border:1px solid #ddd;border-radius:8px;background:#fafafa;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.item-info{flex:1;font-size:14px;font-weight:500}
+.item-sub{font-size:12px;color:#aaa;margin-top:3px;font-weight:400}
+.item-qty{display:flex;align-items:center;gap:8px;margin-top:4px}
+.qty-btn{width:32px;height:32px;border:1px solid #ddd;border-radius:8px;background:#fafafa;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .qty-btn:hover{background:#e8c84a;border-color:#e8c84a}
-.qty-input{width:50px;text-align:center;border:1px solid #ddd;border-radius:8px;padding:4px;font-size:14px;font-family:inherit}
-.item-price{font-size:13px;color:#888;min-width:60px;text-align:right}
+.qty-input{width:52px;text-align:center;border:1px solid #ddd;border-radius:8px;padding:4px;font-size:14px;font-family:inherit}
+.item-price{font-size:13px;color:#888;min-width:70px;text-align:right;flex-shrink:0;padding-top:4px}
 .summary-row{display:flex;justify-content:space-between;padding:6px 0;font-size:14px}
 .summary-row.total{font-weight:700;font-size:16px;border-top:1px solid #e5e5df;margin-top:6px;padding-top:12px}
 .toast{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;padding:10px 20px;border-radius:10px;font-size:14px;z-index:999;opacity:0;transition:.3s;pointer-events:none}
@@ -56,10 +57,6 @@ body{font-family:'Noto Sans TC',system-ui,sans-serif;background:#f7f5f0;color:#1
 .loading-overlay.show{display:flex}
 .spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.steps{display:flex;gap:8px;margin-bottom:2rem}
-.step{flex:1;height:4px;border-radius:2px;background:#e5e5df}
-.step.active{background:#e8c84a}
-.step.done{background:#1a1a1a}
 </style>
 </head>
 <body>
@@ -80,15 +77,8 @@ body{font-family:'Noto Sans TC',system-ui,sans-serif;background:#f7f5f0;color:#1
 <script>
 const API = 'https://script.google.com/macros/s/AKfycbw-G6nMGsOQeqCTM9GgMWkzNk4bwB5ABBAEiF9ynzdQgqWWmxfe0ulgdxUnuFaK523m/exec';
 
-// 暫定品項（之後可從後台設定）
-const PRODUCTS = [
-  {id:'p1', name:'林家涼麵（原味）', unit:'盒', price:0, minQty:10},
-  {id:'p2', name:'林家涼麵（麻辣）', unit:'盒', price:0, minQty:10},
-  {id:'p3', name:'自家辣椒油', unit:'罐', price:0, minQty:6},
-];
-
 let session = JSON.parse(sessionStorage.getItem('b2b-session')||'null');
-let cart = {};
+let B2B_PRODUCTS = [];
 
 const app = document.getElementById('app');
 
@@ -108,7 +98,6 @@ async function 呼叫API(body){
     return await r.json();
   }catch(e){return{ok:false,error:e.message};}
 }
-function 數值(id){return +(document.getElementById(id)?.value)||0;}
 function 文字(id){return document.getElementById(id)?.value?.trim()||'';}
 
 // ===== 路由 =====
@@ -149,7 +138,7 @@ function 渲染首頁(){
       </div>
       <div class="field"><label>店家地址</label><input id="apply-address" placeholder="縣市 + 路段即可"></div>
       <div class="field"><label>Email（審核結果通知用）</label><input id="apply-email" type="email" placeholder="your@email.com"></div>
-      <div class="field"><label>想進什麼品項？有什麼問題？</label><textarea id="apply-note" placeholder="例：想進盒裝涼麵，一週預計用量大約 XX 份..."></textarea></div>
+      <div class="field"><label>想進什麼品項？有什麼問題？</label><textarea id="apply-note" placeholder="例：想進麻醬包，一週預計用量大約 XX 袋..."></textarea></div>
       <button class="btn btn-yellow" onclick="送出申請()" style="margin-top:.5rem">送出申請</button>
       <div class="hint" style="text-align:center;margin-top:.8rem">送出後我們會在 1-2 個工作天內審核並通知你</div>
     </div>
@@ -204,10 +193,15 @@ function 渲染等待審核(){
 }
 
 // ===== 下單頁 =====
-function 渲染下單頁(){
+async function 渲染下單頁(){
   document.getElementById('topbar-user').textContent=session.name||'';
+  app.innerHTML=`<div style="padding:2rem 0;text-align:center;color:#aaa">載入商品中...</div>`;
+  載入(true,'載入商品中...');
+  const res=await 呼叫API({action:'getB2BProducts'});
+  載入(false);
+  B2B_PRODUCTS=res.data||[];
+
   const today=new Date().toISOString().slice(0,10);
-  // 預計到貨日：3天後
   const d=new Date(); d.setDate(d.getDate()+3);
   const defaultDate=d.toISOString().slice(0,10);
 
@@ -223,19 +217,23 @@ function 渲染下單頁(){
     <div class="card">
       <div class="card-title">品項選擇</div>
       <div id="product-list">
-        ${PRODUCTS.map(p=>`
-        <div class="order-item">
-          <div class="item-name">
-            ${p.name}
-            <div style="font-size:12px;color:#aaa">最低訂購 ${p.minQty} ${p.unit}</div>
-          </div>
-          <div class="item-qty">
-            <button class="qty-btn" onclick="調整數量('${p.id}',-1)">−</button>
-            <input class="qty-input" type="number" id="qty-${p.id}" value="0" min="0" oninput="更新小計()">
-            <button class="qty-btn" onclick="調整數量('${p.id}',1)">＋</button>
-          </div>
-          <div class="item-price" id="sub-${p.id}" style="font-size:12px;color:#aaa">${p.unit}</div>
-        </div>`).join('')}
+        ${B2B_PRODUCTS.length?B2B_PRODUCTS.map(p=>{
+          const pkgSize=+p.packageSize||1;
+          const b2bPrice=+p.b2bPrice||0;
+          return`<div class="order-item">
+            <div class="item-info">
+              <div>${p.name}${p.spec?` <span style="color:#888;font-size:12px;font-weight:400">${p.spec}</span>`:''}</div>
+              <div class="item-sub">每袋 ${pkgSize} 包　單袋 $${b2bPrice}</div>
+              <div class="item-qty">
+                <button class="qty-btn" onclick="調整數量('${p.id}',-1)">−</button>
+                <input class="qty-input" type="number" id="qty-${p.id}" value="0" min="0" oninput="更新小計()">
+                <button class="qty-btn" onclick="調整數量('${p.id}',1)">＋</button>
+                <span style="font-size:13px;color:#888">袋</span>
+              </div>
+            </div>
+            <div class="item-price" id="sub-${p.id}">—</div>
+          </div>`;
+        }).join(''):`<div style="color:#aaa;text-align:center;padding:1rem">目前無開放批發商品，請聯繫業務</div>`}
       </div>
     </div>
     <div class="card">
@@ -254,7 +252,6 @@ function 渲染下單頁(){
 
 function 調整數量(id, delta){
   const input=document.getElementById('qty-'+id);
-  const p=PRODUCTS.find(x=>x.id===id);
   let v=+(input.value||0)+delta;
   if(v<0)v=0;
   input.value=v;
@@ -264,43 +261,52 @@ function 調整數量(id, delta){
 function 更新小計(){
   let hasItem=false;
   let summaryHTML='';
-  PRODUCTS.forEach(p=>{
+  let grandTotal=0;
+  B2B_PRODUCTS.forEach(p=>{
     const qty=+(document.getElementById('qty-'+p.id)?.value||0);
-    const sub=document.getElementById('sub-'+p.id);
-    if(sub) sub.textContent=qty>0?qty+' '+p.unit:p.unit;
+    const b2bPrice=+p.b2bPrice||0;
+    const sub=qty*b2bPrice;
+    const subEl=document.getElementById('sub-'+p.id);
+    if(subEl) subEl.textContent=qty>0?`$${sub.toLocaleString()}`:'—';
     if(qty>0){
       hasItem=true;
-      summaryHTML+=`<div class="summary-row"><span>${p.name}</span><span>${qty} ${p.unit}</span></div>`;
+      grandTotal+=sub;
+      const pkgSize=+p.packageSize||1;
+      summaryHTML+=`<div class="summary-row"><span>${p.name}${p.spec?' '+p.spec:''} × ${qty} 袋（${qty*pkgSize} 包）</span><span>$${sub.toLocaleString()}</span></div>`;
     }
   });
+  if(hasItem) summaryHTML+=`<div class="summary-row total"><span>訂單總計</span><span>$${grandTotal.toLocaleString()}</span></div>`;
   const summaryEl=document.getElementById('order-summary');
   if(summaryEl) summaryEl.innerHTML=hasItem?summaryHTML:'<div style="color:#aaa;font-size:14px">尚未選擇品項</div>';
 }
 
 async function 送出訂單(){
-  const items=PRODUCTS.map(p=>({
-    id:p.id,name:p.name,unit:p.unit,
+  const items=B2B_PRODUCTS.map(p=>({
+    id:p.id,name:p.name,spec:p.spec||'',unit:'袋',
+    packageSize:+p.packageSize||1,
+    b2bPrice:+p.b2bPrice||0,
     qty:+(document.getElementById('qty-'+p.id)?.value||0)
   })).filter(x=>x.qty>0);
   if(!items.length){提示('請至少選擇一個品項');return;}
   const date=文字('order-date'),address=文字('order-address');
   if(!date){提示('請選擇希望到貨日期');return;}
   if(!address){提示('請填寫配送地址');return;}
+  const total=items.reduce((s,x)=>s+x.qty*x.b2bPrice,0);
   載入(true,'送出訂單中...');
   const res=await 呼叫API({action:'b2bOrder',order:{
     customerCode:session.code,
     customerName:session.name,
     contact:session.contact,
     phone:session.phone,
-    items,date,address,
+    items,date,address,total,
     note:文字('order-note')
   }});
   載入(false);
   if(!res.ok){提示('送出失敗：'+(res.error||'請稍後再試'));return;}
-  渲染完成頁(res.orderId);
+  渲染完成頁(res.orderId,total);
 }
 
-function 渲染完成頁(orderId){
+function 渲染完成頁(orderId,total){
   app.innerHTML=`
   <div style="padding-top:3rem;text-align:center">
     <div style="font-size:56px;margin-bottom:1rem">✅</div>
@@ -309,6 +315,7 @@ function 渲染完成頁(orderId){
     <div class="card" style="text-align:left">
       <div class="card-title">訂單編號</div>
       <div style="font-size:18px;font-weight:700;letter-spacing:1px">${orderId}</div>
+      ${total?`<div style="margin-top:8px;font-size:14px;color:#888">訂單金額：<strong style="color:#1a1a1a">$${total.toLocaleString()}</strong></div>`:''}
     </div>
     <button class="btn btn-primary" onclick="渲染下單頁()" style="margin-top:.5rem">繼續下單</button>
     <button class="btn btn-outline" onclick="登出()" style="margin-top:.5rem">登出</button>
