@@ -220,15 +220,16 @@ async function 渲染下單頁(){
         ${B2B_PRODUCTS.length?B2B_PRODUCTS.map(p=>{
           const pkgSize=+p.packageSize||1;
           const b2bPrice=+p.b2bPrice||0;
+          const unitPrice=pkgSize?b2bPrice/pkgSize:0;
           return`<div class="order-item">
             <div class="item-info">
               <div>${p.name}${p.spec?` <span style="color:#888;font-size:12px;font-weight:400">${p.spec}</span>`:''}</div>
-              <div class="item-sub">每袋 ${pkgSize} 包　單袋 $${b2bPrice}</div>
+              <div class="item-sub">每包 $${unitPrice%1===0?unitPrice:unitPrice.toFixed(2)}　（整袋 ${pkgSize} 包 = $${b2bPrice}）</div>
               <div class="item-qty">
                 <button class="qty-btn" onclick="調整數量('${p.id}',-1)">−</button>
                 <input class="qty-input" type="number" id="qty-${p.id}" value="0" min="0" oninput="更新小計()">
                 <button class="qty-btn" onclick="調整數量('${p.id}',1)">＋</button>
-                <span style="font-size:13px;color:#888">袋</span>
+                <span style="font-size:13px;color:#888">包</span>
               </div>
             </div>
             <div class="item-price" id="sub-${p.id}">—</div>
@@ -264,15 +265,19 @@ function 更新小計(){
   let grandTotal=0;
   B2B_PRODUCTS.forEach(p=>{
     const qty=+(document.getElementById('qty-'+p.id)?.value||0);
+    const pkgSize=+p.packageSize||1;
     const b2bPrice=+p.b2bPrice||0;
-    const sub=qty*b2bPrice;
+    const unitPrice=pkgSize?b2bPrice/pkgSize:0;
+    const sub=qty*unitPrice;
     const subEl=document.getElementById('sub-'+p.id);
     if(subEl) subEl.textContent=qty>0?`$${sub.toLocaleString()}`:'—';
     if(qty>0){
       hasItem=true;
       grandTotal+=sub;
-      const pkgSize=+p.packageSize||1;
-      summaryHTML+=`<div class="summary-row"><span>${p.name}${p.spec?' '+p.spec:''} × ${qty} 袋（${qty*pkgSize} 包）</span><span>$${sub.toLocaleString()}</span></div>`;
+      const bags=Math.floor(qty/pkgSize);
+      const loose=qty%pkgSize;
+      const qtyLabel=bags>0&&loose>0?`${bags}袋＋${loose}包`:bags>0?`${bags}袋`:`${loose}包`;
+      summaryHTML+=`<div class="summary-row"><span>${p.name}${p.spec?' '+p.spec:''} × ${qty} 包（${qtyLabel}）</span><span>$${sub.toLocaleString()}</span></div>`;
     }
   });
   if(hasItem) summaryHTML+=`<div class="summary-row total"><span>訂單總計</span><span>$${grandTotal.toLocaleString()}</span></div>`;
@@ -281,17 +286,18 @@ function 更新小計(){
 }
 
 async function 送出訂單(){
-  const items=B2B_PRODUCTS.map(p=>({
-    id:p.id,name:p.name,spec:p.spec||'',unit:'袋',
-    packageSize:+p.packageSize||1,
-    b2bPrice:+p.b2bPrice||0,
-    qty:+(document.getElementById('qty-'+p.id)?.value||0)
-  })).filter(x=>x.qty>0);
+  const items=B2B_PRODUCTS.map(p=>{
+    const pkgSize=+p.packageSize||1;
+    const b2bPrice=+p.b2bPrice||0;
+    const unitPrice=pkgSize?b2bPrice/pkgSize:0;
+    const qty=+(document.getElementById('qty-'+p.id)?.value||0);
+    return{id:p.id,name:p.name,spec:p.spec||'',unit:'包',packageSize:pkgSize,unitPrice,qty,subtotal:qty*unitPrice};
+  }).filter(x=>x.qty>0);
   if(!items.length){提示('請至少選擇一個品項');return;}
   const date=文字('order-date'),address=文字('order-address');
   if(!date){提示('請選擇希望到貨日期');return;}
   if(!address){提示('請填寫配送地址');return;}
-  const total=items.reduce((s,x)=>s+x.qty*x.b2bPrice,0);
+  const total=items.reduce((s,x)=>s+x.subtotal,0);
   載入(true,'送出訂單中...');
   const res=await 呼叫API({action:'b2bOrder',order:{
     customerCode:session.code,
