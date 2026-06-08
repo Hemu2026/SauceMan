@@ -137,6 +137,8 @@ function 渲染首頁(){
         <div class="field"><label>聯絡電話 *</label><input id="apply-phone" type="tel" placeholder="0912345678"></div>
       </div>
       <div class="field"><label>店家地址</label><input id="apply-address" placeholder="縣市 + 路段即可"></div>
+      <div class="field"><label>自訂帳號代碼 *</label><input id="apply-code" placeholder="例：amingbreakfast（英文或數字，自己好記就好）" style="font-family:monospace"></div>
+      <div class="hint" style="margin-top:-8px;margin-bottom:8px;font-size:12px;color:#888">這是你之後登入下單用的代碼，請自己設定一個好記的</div>
       <div class="field"><label>Email（審核結果通知用）</label><input id="apply-email" type="email" placeholder="your@email.com"></div>
       <div class="field"><label>想進什麼品項？有什麼問題？</label><textarea id="apply-note" placeholder="例：想進麻醬包，一週預計用量大約 XX 袋..."></textarea></div>
       <button class="btn btn-yellow" onclick="送出申請()" style="margin-top:.5rem">送出申請</button>
@@ -161,11 +163,13 @@ async function 登入(){
 // ===== 送出申請 =====
 async function 送出申請(){
   const name=文字('apply-name'),type=文字('apply-type'),
-        contact=文字('apply-contact'),phone=文字('apply-phone');
+        contact=文字('apply-contact'),phone=文字('apply-phone'),
+        code=文字('apply-code');
   if(!name||!type||!contact||!phone){提示('請填寫必填欄位（*）');return;}
+  if(!code){提示('請填寫自訂帳號代碼');return;}
   載入(true,'送出申請中...');
   const res=await 呼叫API({action:'b2bApply',data:{
-    name,type,contact,phone,
+    name,type,contact,phone,code,
     address:文字('apply-address'),
     email:文字('apply-email'),
     note:文字('apply-note')
